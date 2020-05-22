@@ -3,7 +3,7 @@
 # $ docker build -t librespot-rpi -f .\contrib\Dockerfile.Rpi .
 #
 # This builds a docker image which is usable when running docker on the rpi.
-# 
+#
 # This Dockerfile builds in windows without any requirements, for linux based systems you might need to run the following line:
 # docker run --rm --privileged multiarch/qemu-user-static:register --reset
 # (see here for more info: https://gist.github.com/PieterScheffers/d50f609d9628383e4c9d8d7d269b7643 )
@@ -15,7 +15,7 @@
 # docker load -i librespot-rpi
 #
 # Run it with:
-# docker run -d --restart unless-stopped $(for DEV in $(find /dev/snd -type c); do echo --device=$DEV:$DEV; done) --net=host --name librespot-rpi librespot-rpi --name {devicename} 
+# docker run -d --restart unless-stopped $(for DEV in $(find /dev/snd -type c); do echo --device=$DEV:$DEV; done) --net=host --name librespot-rpi librespot-rpi --name {devicename}
 
 FROM debian:stretch
 
@@ -42,7 +42,7 @@ ENV PKG_CONFIG_ALLOW_CROSS 1
 ADD . /src
 WORKDIR /src
 
-RUN cargo build --release --target arm-unknown-linux-gnueabihf --no-default-features --features "alsa-backend"
+RUN cargo build --release --target arm-unknown-linux-gnueabihf --no-default-features
 
 
 FROM resin/rpi-raspbian

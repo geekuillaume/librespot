@@ -39,4 +39,4 @@ done
 echo -e '[target.arm-unknown-linux-gnueabihf]\nlinker = "gcc-sysroot"' > /.cargo/config
 
 # Build
-cargo build --release --target arm-unknown-linux-gnueabihf --no-default-features --features "alsa-backend"
+cargo build --release --target arm-unknown-linux-gnueabihf --no-default-features
