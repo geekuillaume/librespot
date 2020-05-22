@@ -30,11 +30,16 @@ jobs:
           command: build
           args: --release --no-default-features
 
-      - name: List build results
-        run: ls -R target/
-
       - name: Upload build artifacts
         uses: actions/upload-artifact@v1
+        if: "runner.os != 'Windows'"
         with:
           name: ${{ format( 'librespot-{0}-x64', runner.os ) }}
           path: target/release/librespot
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v1
+        if: "runner.os == 'Windows'"
+        with:
+          name: ${{ format( 'librespot-{0}-x64', runner.os ) }}
+          path: target/release/librespot.exe
