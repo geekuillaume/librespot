@@ -30,6 +30,9 @@ jobs:
           command: build
           args: --release --no-default-features
 
+      - name: List build results
+        run: ls -R target/
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v1
         with:
