@@ -1,12 +1,26 @@
-use super::{Open, Sink};
+use super::{Open, Sink, SinkAsBytes};
+use crate::config::AudioFormat;
+use crate::convert::Converter;
+use crate::decoder::AudioPacket;
+use crate::{NUM_CHANNELS, SAMPLES_PER_SECOND, SAMPLE_RATE};
 use alsa::device_name::HintIter;
-use alsa::pcm::{Access, Format, HwParams, PCM};
+use alsa::pcm::{Access, Format, Frames, HwParams, PCM};
 use alsa::{Direction, Error, ValueOr};
+use std::cmp::min;
 use std::ffi::CString;
 use std::io;
 use std::process::exit;
+use std::time::Duration;
 
-pub struct AlsaSink(Option<PCM>, String);
+const BUFFERED_LATENCY: Duration = Duration::from_millis(125);
+const BUFFERED_PERIODS: Frames = 4;
+
+pub struct AlsaSink {
+    pcm: Option<PCM>,
+    format: AudioFormat,
+    device: String,
+    buffer: Vec<u8>,
+}
 
 fn list_outputs() {
     for t in &["pcm", "ctl", "hwdep"] {
@@ -25,23 +39,35 @@ fn list_outputs() {
     }
 }
 
-fn open_device(dev_name: &str) -> Result<(PCM), Box<Error>> {
+fn open_device(dev_name: &str, format: AudioFormat) -> Result<(PCM, Frames), Box<Error>> {
     let pcm = PCM::new(dev_name, Direction::Playback, false)?;
+    let alsa_format = match format {
+        AudioFormat::F64 => Format::float64(),
+        AudioFormat::F32 => Format::float(),
+        AudioFormat::S32 => Format::s32(),
+        AudioFormat::S24 => Format::s24(),
+        AudioFormat::S16 => Format::s16(),
+
+        #[cfg(target_endian = "little")]
+        AudioFormat::S24_3 => Format::S243LE,
+        #[cfg(target_endian = "big")]
+        AudioFormat::S24_3 => Format::S243BE,
+    };
+
     // http://www.linuxjournal.com/article/6735?page=0,1#N0x19ab2890.0x19ba78d8
     // latency = period_size * periods / (rate * bytes_per_frame)
-    // For 16 Bit stereo data, one frame has a length of four bytes.
-    // 500ms  = buffer_size / (44100 * 4)
-    // buffer_size_bytes = 0.5 * 44100 / 4
-    // buffer_size_frames = 0.5 * 44100 = 22050
+    // For stereo samples encoded as 32-bit float, one frame has a length of eight bytes.
+    let mut period_size = ((SAMPLES_PER_SECOND * format.size() as u32) as f32
+        * (BUFFERED_LATENCY.as_secs_f32() / BUFFERED_PERIODS as f32))
+        as Frames;
     {
-        // Set hardware parameters: 44100 Hz / Stereo / 16 bit
         let hwp = HwParams::any(&pcm)?;
-
         hwp.set_access(Access::RWInterleaved)?;
-        hwp.set_format(Format::s16())?;
-        hwp.set_rate(44100, ValueOr::Nearest)?;
-        hwp.set_channels(2)?;
-        hwp.set_buffer_size_near(22050)?; // ~ 0.5s latency
+        hwp.set_format(alsa_format)?;
+        hwp.set_rate(SAMPLE_RATE, ValueOr::Nearest)?;
+        hwp.set_channels(NUM_CHANNELS as u32)?;
+        period_size = hwp.set_period_size_near(period_size, ValueOr::Greater)?;
+        hwp.set_buffer_size_near(period_size * BUFFERED_PERIODS)?;
         pcm.hw_params(&hwp)?;
 
         let swp = pcm.sw_params_current()?;
@@ -49,16 +75,16 @@ fn open_device(dev_name: &str) -> Result<(PCM), Box<Error>> {
         pcm.sw_params(&swp)?;
     }
 
-    Ok(pcm)
+    Ok((pcm, period_size))
 }
 
 impl Open for AlsaSink {
-    fn open(device: Option<String>) -> AlsaSink {
-        info!("Using alsa sink");
+    fn open(device: Option<String>, format: AudioFormat) -> Self {
+        info!("Using Alsa sink with format: {:?}", format);
 
-        let name = match device.as_ref().map(AsRef::as_ref) {
+        let name = match device.as_deref() {
             Some("?") => {
-                println!("Listing available alsa outputs");
+                println!("Listing available Alsa outputs:");
                 list_outputs();
                 exit(0)
             }
@@ -67,16 +93,27 @@ impl Open for AlsaSink {
         }
         .to_string();
 
-        AlsaSink(None, name)
+        Self {
+            pcm: None,
+            format,
+            device: name,
+            buffer: vec![],
+        }
     }
 }
 
 impl Sink for AlsaSink {
     fn start(&mut self) -> io::Result<()> {
-        if self.0.is_none() {
-            let pcm = open_device(&self.1);
+        if self.pcm.is_none() {
+            let pcm = open_device(&self.device, self.format);
             match pcm {
-                Ok(p) => self.0 = Some(p),
+                Ok((p, period_size)) => {
+                    self.pcm = Some(p);
+                    // Create a buffer for all samples for a full period
+                    self.buffer = Vec::with_capacity(
+                        period_size as usize * BUFFERED_PERIODS as usize * self.format.size(),
+                    );
+                }
                 Err(e) => {
                     error!("Alsa error PCM open {}", e);
                     return Err(io::Error::new(
@@ -92,22 +129,49 @@ impl Sink for AlsaSink {
 
     fn stop(&mut self) -> io::Result<()> {
         {
-            let pcm = self.0.as_ref().unwrap();
+            // Write any leftover data in the period buffer
+            // before draining the actual buffer
+            self.write_bytes(&[]).expect("could not flush buffer");
+            let pcm = self.pcm.as_mut().unwrap();
             pcm.drain().unwrap();
         }
-        self.0 = None;
+        self.pcm = None;
         Ok(())
     }
 
-    fn write(&mut self, data: &[i16]) -> io::Result<()> {
-        let pcm = self.0.as_mut().unwrap();
-        let io = pcm.io_i16().unwrap();
+    sink_as_bytes!();
+}
 
-        match io.writei(&data) {
-            Ok(_) => (),
-            Err(err) => pcm.try_recover(err, false).unwrap(),
+impl SinkAsBytes for AlsaSink {
+    fn write_bytes(&mut self, data: &[u8]) -> io::Result<()> {
+        let mut processed_data = 0;
+        while processed_data < data.len() {
+            let data_to_buffer = min(
+                self.buffer.capacity() - self.buffer.len(),
+                data.len() - processed_data,
+            );
+            self.buffer
+                .extend_from_slice(&data[processed_data..processed_data + data_to_buffer]);
+            processed_data += data_to_buffer;
+            if self.buffer.len() == self.buffer.capacity() {
+                self.write_buf();
+                self.buffer.clear();
+            }
         }
 
         Ok(())
+    }
+}
+
+impl AlsaSink {
+    pub const NAME: &'static str = "alsa";
+
+    fn write_buf(&mut self) {
+        let pcm = self.pcm.as_mut().unwrap();
+        let io = pcm.io_bytes();
+        match io.writei(&self.buffer) {
+            Ok(_) => (),
+            Err(err) => pcm.try_recover(err, false).unwrap(),
+        };
     }
 }

@@ -1,19 +1,16 @@
+use std::io::{self, Read};
+
 use aes::Aes192;
-use base64;
 use byteorder::{BigEndian, ByteOrder};
 use hmac::Hmac;
 use pbkdf2::pbkdf2;
 use protobuf::ProtobufEnum;
-use serde;
-use serde_json;
+use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
-use std::fs::File;
-use std::io::{self, Read, Write};
-use std::ops::FnOnce;
-use std::path::Path;
 
 use crate::protocol::authentication::AuthenticationType;
 
+/// The credentials are used to log into the Spotify API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Credentials {
     pub username: String,
@@ -29,11 +26,19 @@ pub struct Credentials {
 }
 
 impl Credentials {
-    pub fn with_password(username: String, password: String) -> Credentials {
+    /// Intialize these credentials from a username and a password.
+    ///
+    /// ### Example
+    /// ```rust
+    /// use librespot_core::authentication::Credentials;
+    ///
+    /// let creds = Credentials::with_password("my account", "my password");
+    /// ```
+    pub fn with_password(username: impl Into<String>, password: impl Into<String>) -> Credentials {
         Credentials {
-            username: username,
+            username: username.into(),
             auth_type: AuthenticationType::AUTHENTICATION_USER_PASS,
-            auth_data: password.into_bytes(),
+            auth_data: password.into().into_bytes(),
         }
     }
 
@@ -76,9 +81,9 @@ impl Credentials {
 
         // decrypt data using ECB mode without padding
         let blob = {
-            use aes::block_cipher_trait::generic_array::typenum::Unsigned;
-            use aes::block_cipher_trait::generic_array::GenericArray;
-            use aes::block_cipher_trait::BlockCipher;
+            use aes::cipher::generic_array::typenum::Unsigned;
+            use aes::cipher::generic_array::GenericArray;
+            use aes::cipher::{BlockCipher, NewBlockCipher};
 
             let mut data = base64::decode(encrypted_blob).unwrap();
             let cipher = Aes192::new(GenericArray::from_slice(&key));
@@ -107,31 +112,10 @@ impl Credentials {
         let auth_data = read_bytes(&mut cursor).unwrap();
 
         Credentials {
-            username: username,
-            auth_type: auth_type,
-            auth_data: auth_data,
+            username,
+            auth_type,
+            auth_data,
         }
-    }
-
-    fn from_reader<R: Read>(mut reader: R) -> Credentials {
-        let mut contents = String::new();
-        reader.read_to_string(&mut contents).unwrap();
-
-        serde_json::from_str(&contents).unwrap()
-    }
-
-    pub(crate) fn from_file<P: AsRef<Path>>(path: P) -> Option<Credentials> {
-        File::open(path).ok().map(Credentials::from_reader)
-    }
-
-    fn save_to_writer<W: Write>(&self, writer: &mut W) {
-        let contents = serde_json::to_string(&self.clone()).unwrap();
-        writer.write_all(contents.as_bytes()).unwrap();
-    }
-
-    pub(crate) fn save_to_file<P: AsRef<Path>>(&self, path: P) {
-        let mut file = File::create(path).unwrap();
-        self.save_to_writer(&mut file)
     }
 }
 
@@ -166,28 +150,4 @@ where
 {
     let v: String = serde::Deserialize::deserialize(de)?;
     base64::decode(&v).map_err(|e| serde::de::Error::custom(e.to_string()))
-}
-
-pub fn get_credentials<F: FnOnce(&String) -> String>(
-    username: Option<String>,
-    password: Option<String>,
-    cached_credentials: Option<Credentials>,
-    prompt: F,
-) -> Option<Credentials> {
-    match (username, password, cached_credentials) {
-        (Some(username), Some(password), _) => Some(Credentials::with_password(username, password)),
-
-        (Some(ref username), _, Some(ref credentials)) if *username == credentials.username => {
-            Some(credentials.clone())
-        }
-
-        (Some(username), None, _) => Some(Credentials::with_password(
-            username.clone(),
-            prompt(&username),
-        )),
-
-        (None, _, Some(credentials)) => Some(credentials),
-
-        (None, _, None) => None,
-    }
 }

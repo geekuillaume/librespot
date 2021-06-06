@@ -1,42 +1,40 @@
-use super::{Open, Sink};
+use super::{Open, Sink, SinkAsBytes};
+use crate::config::AudioFormat;
+use crate::convert::Converter;
+use crate::decoder::AudioPacket;
 use std::fs::OpenOptions;
 use std::io::{self, Write};
-use std::mem;
-use std::slice;
 
-pub struct StdoutSink(Box<dyn Write>);
+pub struct StdoutSink {
+    output: Box<dyn Write>,
+    format: AudioFormat,
+}
 
 impl Open for StdoutSink {
-    fn open(path: Option<String>) -> StdoutSink {
-        if let Some(path) = path {
-            let file = OpenOptions::new().write(true).open(path).unwrap();
-            StdoutSink(Box::new(file))
-        } else {
-            StdoutSink(Box::new(io::stdout()))
-        }
+    fn open(path: Option<String>, format: AudioFormat) -> Self {
+        info!("Using pipe sink with format: {:?}", format);
+
+        let output: Box<dyn Write> = match path {
+            Some(path) => Box::new(OpenOptions::new().write(true).open(path).unwrap()),
+            _ => Box::new(io::stdout()),
+        };
+
+        Self { output, format }
     }
 }
 
 impl Sink for StdoutSink {
-    fn start(&mut self) -> io::Result<()> {
+    sink_as_bytes!();
+}
+
+impl SinkAsBytes for StdoutSink {
+    fn write_bytes(&mut self, data: &[u8]) -> io::Result<()> {
+        self.output.write_all(data)?;
+        self.output.flush()?;
         Ok(())
     }
+}
 
-    fn stop(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-
-    fn write(&mut self, data: &[i16]) -> io::Result<()> {
-        let data: &[u8] = unsafe {
-            slice::from_raw_parts(
-                data.as_ptr() as *const u8,
-                data.len() * mem::size_of::<i16>(),
-            )
-        };
-
-        self.0.write_all(data)?;
-        self.0.flush()?;
-
-        Ok(())
-    }
+impl StdoutSink {
+    pub const NAME: &'static str = "pipe";
 }

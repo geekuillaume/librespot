@@ -1,16 +1,25 @@
 #!/bin/bash
 
+SKIP_MERGE='false'
+DRY_RUN='false'
+
 WORKINGDIR="$( cd "$(dirname "$0")" ; pwd -P )"
 cd $WORKINGDIR
 
 crates=( "protocol" "core" "audio" "metadata" "playback" "connect" "librespot" )
 
 function switchBranch {
-  # You are expected to have committed/stashed your changes before running this.
-  echo "Switching to master branch and merging development."
-  git checkout master
-  git pull
-  git merge dev
+  if [ "$SKIP_MERGE" = 'false' ] ; then
+    # You are expected to have committed/stashed your changes before running this.
+    echo "Switching to master branch and merging development."
+    git checkout master
+    git pull
+    if [ "$DRY_RUN" = 'true' ] ; then
+      git merge --no-commit --no-ff dev
+    else
+      git merge dev
+    fi
+  fi
 }
 
 function updateVersion {
@@ -24,16 +33,45 @@ function updateVersion {
     crate_path=${crate_path//\/\///}
     sed -i '' "s/^version.*/version = \"$1\"/g" "$crate_path"
     echo "Path is $crate_path"
+    if [ "$CRATE" = "librespot" ]
+    then
+      if [ "$DRY_RUN" = 'true' ] ; then
+        cargo update --dry-run
+        git add . && git commit --dry-run -a -m "Update Cargo.lock"
+      else
+        cargo update
+        git add . && git commit -a -m "Update Cargo.lock"
+      fi
+    fi
   done
 }
 
 function commitAndTag {
-  git commit -a -m "Update version numbers to $1"
-  git tag "v$1" -a -m "Update to version $1"
+  if [ "$DRY_RUN" = 'true' ] ; then
+    # Skip tagging on dry run.
+    git commit --dry-run -a -m "Update version numbers to $1"
+  else
+    git commit -a -m "Update version numbers to $1"
+    git tag "v$1" -a -m "Update to version $1"
+  fi
 }
 
 function get_crate_name {
   awk -v FS="name = " 'NF>1{print $2; exit}' Cargo.toml
+}
+
+function remoteWait() {
+  IFS=:
+  secs=${1}
+  crate_name=${2}
+  while [ $secs -gt 0 ]
+  do
+    sleep 1 &
+    printf "\rSleeping to allow %s to propagate on crates.io servers. Continuing in %2d second(s)." ${crate_name} ${secs}
+    secs=$(( $secs - 1 ))
+    wait
+  done
+  echo
 }
 
 function publishCrates {
@@ -53,21 +91,57 @@ function publishCrates {
     if [ "$CRATE" == "protocol" ]
     then
       # Protocol crate needs --no-verify option due to build.rs modification.
-      cargo publish --no-verify
+      if [ "$DRY_RUN" = 'true' ] ; then
+        cargo publish --no-verify --dry-run
+      else
+        cargo publish --no-verify
+      fi
     else
-      cargo publish
+      if [ "$DRY_RUN" = 'true' ] ; then
+        cargo publish --dry-run
+      else
+        cargo publish
+      fi
     fi
     echo "Successfully published $crate_name to crates.io"
-    # Should sleep here for 30 seconds to allow Crates.io time to push updated package to edge servers.
+    remoteWait 30 $crate_name
   done
 }
 
 function updateRepo {
   cd $WORKINGDIR
-  echo "Pushing to master branch of repo."
-  git push origin master
-  echo "Pushing v$1 tag to master branch of repo."
-  git push origin v$1
+  if [ "$DRY_RUN" = 'true' ] ; then
+    echo "Pushing to master branch of repo. [DRY RUN]"
+    git push --dry-run origin master
+    echo "Pushing v$1 tag to master branch of repo. [DRY RUN]"
+    git push --dry-run origin v$1
+
+    # Cancels any merges in progress
+    git merge --abort
+
+    git checkout dev
+    git merge --no-commit --no-ff master
+
+    # Cancels above merge
+    git merge --abort
+
+    git push --dry-run
+  else
+    echo "Pushing to master branch of repo."
+    git push origin master
+    echo "Pushing v$1 tag to master branch of repo."
+    git push origin v$1
+    # Update the dev repo with latest version commit
+    git checkout dev
+    git merge master
+    git push
+  fi
+}
+
+function rebaseDev {
+  git checkout dev
+  git merge master
+  git push
 }
 
 function run {
@@ -76,8 +150,51 @@ function run {
   commitAndTag $1
   publishCrates
   updateRepo $1
+  rebaseDev
   echo "Successfully published v$1 to crates.io and uploaded changes to repo."
 }
+
+#Set Script Name variable
+SCRIPT=`basename ${BASH_SOURCE[0]}`
+
+print_usage () {
+  local l_MSG=$1
+  if [ ! -z "${l_MSG}" ]; then
+    echo "Usage Error: $l_MSG"
+  fi
+  echo "Usage: $SCRIPT <args> <version>"
+  echo "  where <version> specifies the version number in semver format, eg. 1.0.1"
+  echo "Recognized optional command line arguments"
+  echo "--dry-run -- Test the script before making live changes"
+  echo "--skip-merge -- Skip merging dev into master before publishing"
+  exit 1
+}
+
+### check number of command line arguments
+NUMARGS=$#
+if [ $NUMARGS -eq 0 ]; then
+  print_usage 'No command line arguments specified'
+fi
+
+while test $# -gt 0; do
+  case "$1" in
+    -h|--help)
+      print_usage
+      exit 0
+      ;;
+      --dry-run)
+        DRY_RUN='true'
+        shift
+        ;;
+    --skip-merge)
+      SKIP_MERGE='true'
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
 
 # First argument is new version number.
 run $1

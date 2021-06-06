@@ -13,7 +13,7 @@ curl https://sh.rustup.rs -sSf | sh
 
 Follow any prompts it gives you to install Rust. Once that’s done, Rust's standard tools should be setup and ready to use.
 
-*Note: The current minimum required Rust version is 1.33.0*
+*Note: The current minimum required Rust version at the time of writing is 1.48, you can find the current minimum version specified in the `.github/workflow/test.yml` file.*
 
 #### Additional Rust tools - `rustfmt`
 To ensure a consistent codebase, we utilise [`rustfmt`](https://github.com/rust-lang/rustfmt), which is installed by default with `rustup` these days, else it can be installed manually with:
@@ -39,15 +39,16 @@ Depending on the chosen backend, specific development libraries are required.
 
 *_Note this is an non-exhaustive list, open a PR to add to it!_*
 
-| Audio backend               | Debian/Ubuntu                    | Fedora  | macOS |
-|--------------------|------------------------------| ------------------------------| -- |
-|Rodio (default)| `libasound2-dev` | `alsa-lib-devel` | 
-|ALSA| `libasound2-dev, pkg-config` |`alsa-lib-devel` |
-|PortAudio| `portaudio19-dev`| `portaudio-devel`| `portaudio`
-|PulseAudio| `libpulse-dev`| `pulseaudio-libs-devel` | 
-|JACK| `libjack-dev` | `jack-audio-connection-kit-devel` | 
-|SDL| `libsdl2-dev`| `SDL2-devel` | 
-|Pipe| - | - | - |
+| Audio backend      | Debian/Ubuntu                | Fedora                            | macOS       |
+|--------------------|------------------------------|-----------------------------------|-------------|
+|Rodio (default)     | `libasound2-dev`             | `alsa-lib-devel`                  |             |
+|ALSA                | `libasound2-dev, pkg-config` | `alsa-lib-devel`                  |             |
+|PortAudio           | `portaudio19-dev`            | `portaudio-devel`                 | `portaudio` |
+|PulseAudio          | `libpulse-dev`               | `pulseaudio-libs-devel`           |             |
+|JACK                | `libjack-dev`                | `jack-audio-connection-kit-devel` |             |
+|JACK over Rodio     | `libjack-dev`                | `jack-audio-connection-kit-devel` |  -          |
+|SDL                 | `libsdl2-dev`                | `SDL2-devel`                      |             |
+|Pipe                |  -                           |  -                                |  -          |
 
 ###### For example, to build an ALSA based backend, you would need to run the following to install the required dependencies:
 

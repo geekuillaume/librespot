@@ -1,33 +1,18 @@
 #[macro_use]
 extern crate log;
 
-extern crate byteorder;
-extern crate futures;
-extern crate shell_words;
-
-#[cfg(feature = "alsa-backend")]
-extern crate alsa;
-
-#[cfg(feature = "portaudio-rs")]
-extern crate portaudio_rs;
-
-#[cfg(feature = "libpulse-sys")]
-extern crate libpulse_sys;
-
-#[cfg(feature = "jackaudio-backend")]
-extern crate jack;
-
-#[cfg(feature = "sdl-backend")]
-extern crate sdl2;
-
-#[cfg(feature = "libc")]
-extern crate libc;
-
-extern crate librespot_audio as audio;
-extern crate librespot_core;
-extern crate librespot_metadata as metadata;
+use librespot_audio as audio;
+use librespot_core as core;
+use librespot_metadata as metadata;
 
 pub mod audio_backend;
 pub mod config;
+mod convert;
+mod decoder;
+pub mod dither;
 pub mod mixer;
 pub mod player;
+
+pub const SAMPLE_RATE: u32 = 44100;
+pub const NUM_CHANNELS: u8 = 2;
+pub const SAMPLES_PER_SECOND: u32 = SAMPLE_RATE as u32 * NUM_CHANNELS as u32;

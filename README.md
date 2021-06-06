@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/librespot-org/librespot.svg?branch=dev)](https://travis-ci.org/librespot-org/librespot)
+[![Build Status](https://github.com/librespot-org/librespot/workflows/test/badge.svg)](https://github.com/librespot-org/librespot/actions)
 [![Gitter chat](https://badges.gitter.im/librespot-org/librespot.png)](https://gitter.im/librespot-org/spotify-connect-resources)
 [![Crates.io](https://img.shields.io/crates/v/librespot.svg)](https://crates.io/crates/librespot)
 
@@ -20,18 +20,20 @@ As the origin by [plietar](https://github.com/plietar/) is no longer actively ma
 # Documentation
 Documentation is currently a work in progress, contributions are welcome!
 
-There is some brief documentation on how the protocol works in the [docs](https://github.com/librespot-org/librespot/tree/master/docs) folder, 
+There is some brief documentation on how the protocol works in the [docs](https://github.com/librespot-org/librespot/tree/master/docs) folder,
 
 [COMPILING.md](https://github.com/librespot-org/librespot/blob/master/COMPILING.md) contains detailed instructions on setting up a development environment, and compiling librespot. More general usage and compilation information is available on the [wiki](https://github.com/librespot-org/librespot/wiki).
 [CONTRIBUTING.md](https://github.com/librespot-org/librespot/blob/master/CONTRIBUTING.md) also contains our contributing guidelines.
 
 If you wish to learn more about how librespot works overall, the best way is to simply read the code, and ask any questions you have in our [Gitter Room](https://gitter.im/librespot-org/spotify-connect-resources).
 
-# Issues
+# Issues & Discussions
+**We have recently started using Github discussions for general questions and feature requests, as they are a more natural medium for such cases, and allow for upvoting to prioritize feature development. Check them out [here](https://github.com/librespot-org/librespot/discussions). Bugs and issues with the underlying library should still be reported as issues.**
+
 If you run into a bug when using librespot, please search the existing issues before opening a new one. Chances are, we've encountered it before, and have provided a resolution. If not, please open a new one, and where possible, include the backtrace librespot generates on crashing, along with anything we can use to reproduce the issue, eg. the Spotify URI of the song that caused the crash.
 
 # Building
-A quick walk through of the build process is outlined here, while a detailed compilation guide can be found [here](https://github.com/librespot-org/librespot/blob/master/COMPILING.md). 
+A quick walk through of the build process is outlined here, while a detailed compilation guide can be found [here](https://github.com/librespot-org/librespot/blob/master/COMPILING.md).
 
 ## Additional Dependencies
 We recently switched to using [Rodio](https://github.com/tomaka/rodio) for audio playback by default, hence for macOS and Windows, you should just be able to clone and build librespot (with the command below).
@@ -47,13 +49,14 @@ On Fedora systems, the following command will install these dependencies :
 sudo dnf install alsa-lib-devel make gcc
 ```
 
-librespot currently offers the a selection of [audio backends](https://github.com/librespot-org/librespot/wiki/Audio-Backends).
+librespot currently offers the following selection of [audio backends](https://github.com/librespot-org/librespot/wiki/Audio-Backends).
 ```
 Rodio (default)
 ALSA
 PortAudio
 PulseAudio
 JACK
+JACK over Rodio
 SDL
 Pipe
 ```
@@ -63,6 +66,12 @@ Once you've installed the dependencies and cloned this repository you can build 
 ```shell
 cargo build --release
 ```
+
+# Packages
+
+librespot is also available via official package system on various operating systems such as Linux, FreeBSD, NetBSD. [Repology](https://repology.org/project/librespot/versions) offers a good overview.
+
+[![Packaging status](https://repology.org/badge/vertical-allrepos/librespot.svg)](https://repology.org/project/librespot/versions)
 
 ## Usage
 A sample program implementing a headless Spotify Connect receiver is provided.
@@ -79,6 +88,7 @@ The above command will create a receiver named ```Librespot```, with bitrate set
 
 A full list of runtime options are available [here](https://github.com/librespot-org/librespot/wiki/Options)
 
+_Please Note: When using the cache feature, an authentication blob is stored for your account in the cache directory. For security purposes, we recommend that you set directory permissions on the cache directory to `700`._
 ## Contact
 Come and hang out on gitter if you need help or want to offer some.
 https://gitter.im/librespot-org/spotify-connect-resources
@@ -103,4 +113,3 @@ functionality.
 - [librespot-java](https://github.com/devgianlu/librespot-java) - A Java port of librespot.
 - [ncspot](https://github.com/hrkfdn/ncspot) - Cross-platform ncurses Spotify client.
 - [ansible-role-librespot](https://github.com/xMordax/ansible-role-librespot/tree/master) - Ansible role that will build, install and configure Librespot.
-
